@@ -34,8 +34,8 @@ export default function BuilderShell({
   onTabChange,
 }: BuilderShellProps) {
   return (
-    <main className="h-screen overflow-hidden">
-      <div className="flex h-full flex-col bg-white/50 backdrop-blur-sm">
+    <main className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden">
+      <div className="flex min-h-screen flex-col bg-white/50 backdrop-blur-sm lg:h-full">
         <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b border-white/70 bg-white/80 px-6 py-4 backdrop-blur">
           <Link
             href={backHref}
@@ -95,7 +95,7 @@ export default function BuilderShell({
           </div>
         </header>
 
-        <div className="flex h-full min-h-0 flex-col lg:flex-row">
+        <div className="flex flex-1 flex-col lg:h-full lg:min-h-0 lg:flex-row">
           <aside className="flex w-full flex-col border-b border-white/60 bg-white/60 px-6 py-6 lg:h-full lg:w-[380px] lg:border-b-0 lg:border-r">
             <div className="mb-6 flex items-center justify-between lg:hidden">
               <div className="flex rounded-full bg-white/80 p-1 shadow-soft">
@@ -124,7 +124,7 @@ export default function BuilderShell({
               </div>
             </div>
             <div
-              className={`flex-1 overflow-y-auto pr-2 ${
+              className={`flex-1 overflow-y-visible pr-0 lg:overflow-y-auto lg:pr-2 ${
                 activeTab === "preview" ? "hidden lg:block" : "block"
               }`}
             >
@@ -133,7 +133,7 @@ export default function BuilderShell({
           </aside>
 
           <section
-            className={`flex h-full min-h-0 w-full flex-1 flex-col overflow-y-auto border-t border-white/60 px-6 py-6 lg:border-l lg:border-t-0 ${
+            className={`flex w-full flex-1 flex-col overflow-y-visible border-t border-white/60 px-6 py-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 ${
               activeTab === "edit" ? "hidden lg:flex" : "flex"
             }`}
           >

@@ -20,6 +20,7 @@ import {
   saveBuilderDoc,
 } from "@/lib/builder/storage";
 import { getTemplateRenderer } from "@/templates/renderers";
+import { canPublish, type PublishGateResult } from "@/lib/builder/publishRules";
 
 const AUTOSAVE_DELAY_MS = 600;
 const TOAST_DURATION_MS = 10000;
@@ -48,6 +49,7 @@ export default function BuildTemplatePage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishSlug, setPublishSlug] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [upgradeGate, setUpgradeGate] = useState<PublishGateResult | null>(null);
   const toastTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -151,6 +153,11 @@ export default function BuildTemplatePage() {
     if (!doc || isPublishing) {
       return;
     }
+    const gate = canPublish(doc, templateId as TemplateId);
+    if (!gate.allowed) {
+      setUpgradeGate(gate);
+      return;
+    }
     setIsPublishing(true);
     try {
       const result = await publishPage(templateId as TemplateId, doc);
@@ -175,6 +182,11 @@ export default function BuildTemplatePage() {
     } catch {
       addToast("Copy failed");
     }
+  };
+
+  const handleUpgrade = () => {
+    setUpgradeGate(null);
+    addToast("Payments coming soon");
   };
 
   return (
@@ -222,6 +234,42 @@ export default function BuildTemplatePage() {
               {toast.message}
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {upgradeGate && upgradeGate.requiresUpgrade ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-6">
+          <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-8 text-center shadow-soft">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
+              Upgrade to publish
+            </p>
+            <h2 className="mt-4 font-display text-2xl text-slate-900">
+              This page is ready
+            </h2>
+            <p className="mt-3 text-sm text-slate-600">
+              {upgradeGate.reason ??
+                "Publishing with extra photos requires Premium."}
+            </p>
+            <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50/70 px-4 py-3 text-sm text-slate-700">
+              Photos: {upgradeGate.photoCount ?? 0} / {upgradeGate.maxPhotos ?? 0}
+            </div>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleUpgrade}
+                className={buttonClasses("primary")}
+              >
+                Upgrade
+              </button>
+              <button
+                type="button"
+                onClick={() => setUpgradeGate(null)}
+                className={buttonClasses("outline")}
+              >
+                Back
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
