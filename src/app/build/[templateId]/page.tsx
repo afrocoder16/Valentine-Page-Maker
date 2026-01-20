@@ -13,7 +13,6 @@ import {
   getBuilderTheme,
 } from "@/lib/builder/config";
 import type { BuilderDoc, PreviewMode } from "@/lib/builder/types";
-import { publishPage } from "@/lib/publish";
 import {
   loadBuilderDoc,
   resetBuilderDoc,
@@ -160,8 +159,38 @@ export default function BuildTemplatePage() {
     }
     setIsPublishing(true);
     try {
-      const result = await publishPage(templateId as TemplateId, doc);
-      setPublishSlug(result.slug);
+      const response = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId, doc }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        slug?: string;
+        url?: string;
+        error?: string;
+        message?: string;
+        photoCount?: number;
+        maxPhotos?: number;
+      };
+      if (!response.ok) {
+        if (payload.error === "upgrade_required") {
+          setUpgradeGate({
+            allowed: false,
+            requiresUpgrade: true,
+            reason: payload.message,
+            photoCount: payload.photoCount,
+            maxPhotos: payload.maxPhotos,
+          });
+          return;
+        }
+        addToast(payload.message ?? "Publish failed. Try again.");
+        return;
+      }
+      if (!payload.slug) {
+        addToast("Publish failed. Missing share link.");
+        return;
+      }
+      setPublishSlug(payload.slug);
       setShowPublishModal(true);
     } catch (error) {
       const message =
