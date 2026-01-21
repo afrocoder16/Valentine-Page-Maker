@@ -3,23 +3,32 @@ import { buttonClasses } from "@/components/Button";
 
 const tiers = [
   {
-    name: "Basic",
+    name: "Normal",
     price: "$9.99",
-    features: ["Up to 6 photos", "2 templates", "Watermark removed"],
+    features: ["Up to 6 photos", "Cute Classic + Midnight Muse", "1 share link"],
+    cta: "Start building",
+    href: "/templates",
+    highlight: false,
   },
   {
-    name: "Plus",
-    price: "$19.99",
-    features: ["Up to 10 photos", "All templates", "Extra effects"],
+    name: "Pro",
+    price: "$15",
+    features: ["Up to 15 photos", "All templates", "1 share link"],
+    cta: "Go Pro",
+    href: "/templates",
+    highlight: true,
   },
   {
     name: "Deluxe",
-    price: "$29.99",
+    price: "Custom",
     features: [
-      "Up to 12 photos",
-      "Scheduled reveal",
-      "Private mode (coming soon)",
+      "Custom template built by us",
+      "One-on-one creative direction",
+      "Priority turnaround",
     ],
+    cta: "Contact",
+    href: "mailto:hello@bemyvalentine.com",
+    highlight: false,
   },
 ];
 
@@ -31,19 +40,19 @@ export default function PricingPage() {
           Pricing
         </p>
         <h1 className="mt-3 font-display text-4xl text-slate-900 md:text-5xl">
-          Preview for free. Pay only to publish.
+          Build for free. Pay only to publish.
         </h1>
         <p className="mt-4 text-lg text-slate-600 md:text-xl">
-          Simple tiers, flexible for every love story.
+          Pick a plan for your share link. Deluxe is custom-built by us.
         </p>
       </section>
 
       <section className="mt-10 grid gap-6 md:grid-cols-3">
-        {tiers.map((tier, index) => (
+        {tiers.map((tier) => (
           <div
             key={tier.name}
             className={`flex flex-col justify-between rounded-3xl bg-white/90 p-6 shadow-soft ${
-              index === 1 ? "ring-2 ring-rose-200/70" : ""
+              tier.highlight ? "ring-2 ring-rose-200/70" : ""
             }`}
           >
             <div>
@@ -51,7 +60,7 @@ export default function PricingPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
                   {tier.name}
                 </p>
-                {index === 1 ? (
+                {tier.highlight ? (
                   <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-600">
                     Most popular
                   </span>
@@ -70,17 +79,19 @@ export default function PricingPage() {
               </ul>
             </div>
             <Link
-              href="/templates"
-              className={`${buttonClasses(index === 1 ? "primary" : "outline")} mt-6`}
+              href={tier.href}
+              className={`${buttonClasses(
+                tier.highlight ? "primary" : "outline"
+              )} mt-6`}
             >
-              Start with {tier.name}
+              {tier.cta}
             </Link>
           </div>
         ))}
       </section>
 
       <p className="mt-6 text-sm text-slate-500">
-        You can preview for free. Pay only to publish.
+        You can preview for free. Payment is only required to publish.
       </p>
     </main>
   );

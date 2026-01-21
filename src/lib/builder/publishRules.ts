@@ -1,10 +1,14 @@
 import type { TemplateId } from "@/data/templates";
 import type { BuilderDoc } from "@/lib/builder/types";
+import type { PlanId } from "@/lib/builder/planRules";
+import { getPlanRules, isTemplateAllowed } from "@/lib/builder/planRules";
 
 export type PublishGateResult = {
   allowed: boolean;
   reason?: string;
   requiresUpgrade?: boolean;
+  paymentRequired?: boolean;
+  neededPlan?: PlanId;
   photoCount?: number;
   maxPhotos?: number;
 };
@@ -14,23 +18,44 @@ const countPhotos = (doc: BuilderDoc) =>
 
 export const canPublish = (
   doc: BuilderDoc,
-  templateId: TemplateId
+  templateId: TemplateId,
+  plan?: PlanId | null
 ): PublishGateResult => {
   const photoCount = countPhotos(doc);
 
-  if (templateId === "cute-classic") {
-    const maxPhotos = 3;
-    if (photoCount > maxPhotos) {
-      return {
-        allowed: false,
-        requiresUpgrade: true,
-        reason: "Publishing with more than 3 photos requires Premium.",
-        photoCount,
-        maxPhotos,
-      };
-    }
-    return { allowed: true, photoCount, maxPhotos };
+  if (!plan) {
+    return {
+      allowed: false,
+      requiresUpgrade: true,
+      paymentRequired: true,
+      reason: "Payment required to publish.",
+      photoCount,
+    };
   }
 
-  return { allowed: true, photoCount };
+  const rules = getPlanRules(plan);
+
+  if (!isTemplateAllowed(plan, templateId)) {
+    return {
+      allowed: false,
+      requiresUpgrade: true,
+      neededPlan: "pro",
+      reason: "This template requires Pro.",
+      photoCount,
+      maxPhotos: rules.maxPhotos,
+    };
+  }
+
+  if (photoCount > rules.maxPhotos) {
+    return {
+      allowed: false,
+      requiresUpgrade: true,
+      neededPlan: plan === "normal" ? "pro" : undefined,
+      reason: `This plan allows up to ${rules.maxPhotos} photos.`,
+      photoCount,
+      maxPhotos: rules.maxPhotos,
+    };
+  }
+
+  return { allowed: true, photoCount, maxPhotos: rules.maxPhotos };
 };

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { buttonClasses } from "@/components/Button";
+import PricingModal from "@/components/PricingModal";
 import BuilderShell from "@/components/builder/BuilderShell";
 import EditorPanel from "@/components/builder/EditorPanel";
 import PreviewFrame from "@/components/builder/PreviewFrame";
@@ -12,14 +13,20 @@ import {
   getBuilderSettings,
   getBuilderTheme,
 } from "@/lib/builder/config";
+import {
+  getPlanRules,
+  isTemplateAllowed,
+  type PlanId,
+} from "@/lib/builder/planRules";
 import type { BuilderDoc, PreviewMode } from "@/lib/builder/types";
 import {
   loadBuilderDoc,
   resetBuilderDoc,
   saveBuilderDoc,
 } from "@/lib/builder/storage";
+import { readEntitlementSessionId } from "@/lib/entitlements";
 import { getTemplateRenderer } from "@/templates/renderers";
-import { canPublish, type PublishGateResult } from "@/lib/builder/publishRules";
+import { canPublish } from "@/lib/builder/publishRules";
 
 const AUTOSAVE_DELAY_MS = 600;
 const TOAST_DURATION_MS = 10000;
@@ -48,9 +55,16 @@ export default function BuildTemplatePage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishSlug, setPublishSlug] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [upgradeGate, setUpgradeGate] = useState<PublishGateResult | null>(null);
+  const [entitlementPlan, setEntitlementPlan] = useState<PlanId | null>(null);
+  const [entitlementSessionId, setEntitlementSessionId] = useState("");
+  const [entitlementLoaded, setEntitlementLoaded] = useState(false);
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [pricingReason, setPricingReason] = useState<string | null>(null);
+  const [pricingNeededPlan, setPricingNeededPlan] = useState<PlanId | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<PlanId | null>(null);
   const toastTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const templateGateShown = useRef(false);
 
   useEffect(() => {
     if (!templateId) {
@@ -76,11 +90,45 @@ export default function BuildTemplatePage() {
   }, [doc, hydrated, templateId]);
 
   useEffect(() => {
+    const sessionId = readEntitlementSessionId();
+    setEntitlementSessionId(sessionId);
+
+    if (!sessionId) {
+      setEntitlementLoaded(true);
+      return;
+    }
+
+    const fetchEntitlement = async () => {
+      try {
+        const response = await fetch(
+          `/api/entitlements?session_id=${encodeURIComponent(sessionId)}`
+        );
+        const payload = (await response.json().catch(() => ({}))) as {
+          active?: boolean;
+          plan?: PlanId;
+        };
+        if (response.ok && payload.active) {
+          setEntitlementPlan(payload.plan ?? null);
+        } else {
+          setEntitlementPlan(null);
+        }
+      } catch {
+        setEntitlementPlan(null);
+      } finally {
+        setEntitlementLoaded(true);
+      }
+    };
+
+    void fetchEntitlement();
+  }, []);
+
+  useEffect(() => {
+    const timers = toastTimers.current;
     return () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
       }
-      Object.values(toastTimers.current).forEach(clearTimeout);
+      Object.values(timers).forEach(clearTimeout);
     };
   }, []);
 
@@ -93,6 +141,32 @@ export default function BuildTemplatePage() {
     }, TOAST_DURATION_MS);
     toastTimers.current[id] = timeout;
   };
+
+  const openPricingModal = useCallback(
+    (reason: string, neededPlan?: PlanId | null) => {
+      setPricingReason(reason);
+      setPricingNeededPlan(neededPlan ?? null);
+      setPricingModalOpen(true);
+    },
+    []
+  );
+
+  const closePricingModal = useCallback(() => {
+    setPricingModalOpen(false);
+    setPricingReason(null);
+    setPricingNeededPlan(null);
+  }, []);
+
+  useEffect(() => {
+    if (!templateId || !entitlementLoaded || templateGateShown.current) {
+      return;
+    }
+    const planForTemplate = entitlementPlan ?? "normal";
+    if (!isTemplateAllowed(planForTemplate, templateId as TemplateId)) {
+      openPricingModal("This template requires Pro to publish.", "pro");
+      templateGateShown.current = true;
+    }
+  }, [entitlementLoaded, entitlementPlan, openPricingModal, templateId]);
 
   const shareUrl = useMemo(() => {
     if (!publishSlug || typeof window === "undefined") {
@@ -133,7 +207,13 @@ export default function BuildTemplatePage() {
   }
 
   const theme = getBuilderTheme(templateId as TemplateId);
-  const settings = getBuilderSettings(templateId as TemplateId);
+  const baseSettings = getBuilderSettings(templateId as TemplateId);
+  const planForLimits = entitlementPlan ?? "normal";
+  const planRules = getPlanRules(planForLimits);
+  const settings = {
+    ...baseSettings,
+    maxPhotos: planRules.maxPhotos,
+  };
   const Renderer = getTemplateRenderer(templateId as TemplateId);
 
   const handleSave = () => {
@@ -148,39 +228,101 @@ export default function BuildTemplatePage() {
     addToast("Reset to defaults");
   };
 
+  const handleCheckout = async (plan: PlanId) => {
+    if (!doc || !templateId) {
+      return;
+    }
+    setCheckoutPlan(plan);
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, templateId, docSnapshot: doc }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+        message?: string;
+        needed?: PlanId;
+      };
+      if (!response.ok) {
+        if (payload.error === "upgrade_required") {
+          openPricingModal(
+            payload.message ?? "Upgrade required to continue.",
+            payload.needed ?? "pro"
+          );
+          return;
+        }
+        addToast(payload.message ?? "Checkout failed. Try again.");
+        return;
+      }
+      if (!payload.url) {
+        addToast("Checkout failed. Missing redirect.");
+        return;
+      }
+      window.location.href = payload.url;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Checkout failed. Try again.";
+      addToast(message);
+    } finally {
+      setCheckoutPlan(null);
+    }
+  };
+
   const handlePublish = async () => {
     if (!doc || isPublishing) {
       return;
     }
-    const gate = canPublish(doc, templateId as TemplateId);
-    if (!gate.allowed) {
-      setUpgradeGate(gate);
+
+    if (!entitlementSessionId || !entitlementPlan) {
+      openPricingModal("Choose a plan to publish your page.");
       return;
     }
+
+    const gate = canPublish(doc, templateId as TemplateId, entitlementPlan);
+    if (!gate.allowed) {
+      openPricingModal(
+        gate.reason ?? "Upgrade required to publish.",
+        gate.neededPlan ?? "pro"
+      );
+      return;
+    }
+
     setIsPublishing(true);
     try {
       const response = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId, doc }),
+        body: JSON.stringify({
+          templateId,
+          doc,
+          sessionId: entitlementSessionId,
+        }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         slug?: string;
         url?: string;
         error?: string;
         message?: string;
-        photoCount?: number;
-        maxPhotos?: number;
+        needed?: PlanId;
       };
       if (!response.ok) {
+        if (payload.error === "payment_required") {
+          openPricingModal(payload.message ?? "Payment required to publish.");
+          return;
+        }
         if (payload.error === "upgrade_required") {
-          setUpgradeGate({
-            allowed: false,
-            requiresUpgrade: true,
-            reason: payload.message,
-            photoCount: payload.photoCount,
-            maxPhotos: payload.maxPhotos,
-          });
+          openPricingModal(
+            payload.message ?? "Upgrade required to publish.",
+            payload.needed ?? "pro"
+          );
+          return;
+        }
+        if (payload.error === "entitlement_used") {
+          openPricingModal(
+            payload.message ?? "This purchase has already been used."
+          );
           return;
         }
         addToast(payload.message ?? "Publish failed. Try again.");
@@ -213,9 +355,16 @@ export default function BuildTemplatePage() {
     }
   };
 
-  const handleUpgrade = () => {
-    setUpgradeGate(null);
-    addToast("Payments coming soon");
+  const handleUpgradeRequest = (payload: {
+    reason: string;
+    photoCount: number;
+    maxPhotos: number;
+  }) => {
+    if (entitlementPlan === "pro") {
+      addToast("Photo limit reached.");
+      return;
+    }
+    openPricingModal(payload.reason, "pro");
   };
 
   return (
@@ -239,6 +388,7 @@ export default function BuildTemplatePage() {
             onSave={handleSave}
             onReset={handleReset}
             onToast={addToast}
+            onUpgradeRequest={handleUpgradeRequest}
           />
         }
         preview={
@@ -266,47 +416,20 @@ export default function BuildTemplatePage() {
         </div>
       ) : null}
 
-      {upgradeGate && upgradeGate.requiresUpgrade ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-6">
-          <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-8 text-center shadow-soft">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
-              Upgrade to publish
-            </p>
-            <h2 className="mt-4 font-display text-2xl text-slate-900">
-              This page is ready
-            </h2>
-            <p className="mt-3 text-sm text-slate-600">
-              {upgradeGate.reason ??
-                "Publishing with extra photos requires Premium."}
-            </p>
-            <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50/70 px-4 py-3 text-sm text-slate-700">
-              Photos: {upgradeGate.photoCount ?? 0} / {upgradeGate.maxPhotos ?? 0}
-            </div>
-            <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <button
-                type="button"
-                onClick={handleUpgrade}
-                className={buttonClasses("primary")}
-              >
-                Upgrade
-              </button>
-              <button
-                type="button"
-                onClick={() => setUpgradeGate(null)}
-                className={buttonClasses("outline")}
-              >
-                Back
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PricingModal
+        open={pricingModalOpen}
+        onClose={closePricingModal}
+        onSelectPlan={handleCheckout}
+        reason={pricingReason}
+        neededPlan={pricingNeededPlan}
+        loadingPlan={checkoutPlan}
+      />
 
       {showPublishModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-6">
           <div className="w-full max-w-lg rounded-[2.5rem] bg-white p-8 text-center shadow-soft">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
-              Your Valentine is ready 💖
+              Your Valentine is ready
             </p>
             <h2 className="mt-4 font-display text-2xl text-slate-900">
               Share it with your person

@@ -4,7 +4,14 @@ import { getBuilderTheme } from "@/lib/builder/config";
 import { coerceBuilderDoc } from "@/lib/builder/storage";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getTemplateById, type TemplateId } from "@/data/templates";
-import { getTemplateRenderer } from "@/templates/renderers";
+import type { TemplateRenderer } from "@/lib/builder/types";
+import CuteClassicRenderer from "@/templates/renderers/CuteClassicRenderer";
+import MidnightMuseRenderer from "@/templates/renderers/MidnightMuseRenderer";
+
+const renderers: Partial<Record<TemplateId, TemplateRenderer>> = {
+  "cute-classic": CuteClassicRenderer,
+  "midnight-muse": MidnightMuseRenderer,
+};
 
 type RecipientPageProps = {
   params: Promise<{ slug?: string }>;
@@ -89,7 +96,7 @@ export default async function RecipientPage({ params }: RecipientPageProps) {
 
   const theme = getBuilderTheme(templateId);
   const doc = coerceBuilderDoc(templateId, data.doc);
-  const Renderer = getTemplateRenderer(templateId);
+  const Renderer = renderers[templateId] ?? CuteClassicRenderer;
 
   return (
     <main className={`relative min-h-screen bg-gradient-to-br ${theme.gradient}`}>

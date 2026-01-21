@@ -1,62 +1,22 @@
 import { NextResponse } from "next/server";
 import { TEMPLATE_IDS, type TemplateId } from "@/data/templates";
 import { canPublish } from "@/lib/builder/publishRules";
+import type { PlanId } from "@/lib/builder/planRules";
 import { coerceBuilderDoc } from "@/lib/builder/storage";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { publishWithService } from "@/lib/publish/server";
+import { validateDocShape } from "@/lib/publish/validation";
 
 export const runtime = "nodejs";
 
 type PublishRequestBody = {
   templateId?: unknown;
   doc?: unknown;
-};
-
-const SLUG_LENGTH = 8;
-const MAX_ATTEMPTS = 4;
-const TITLE_MAX = 140;
-const SUBTITLE_MAX = 500;
-const MOMENTS_MAX = 12;
-const PHOTOS_MAX = 20;
-
-const generateSlug = () => {
-  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
-  let slug = "";
-  for (let i = 0; i < SLUG_LENGTH; i += 1) {
-    slug += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return slug;
+  sessionId?: unknown;
 };
 
 const isValidTemplateId = (value: unknown): value is TemplateId =>
   typeof value === "string" && TEMPLATE_IDS.includes(value as TemplateId);
-
-const validateDoc = (doc: Record<string, unknown>) => {
-  const title = typeof doc.title === "string" ? doc.title.trim() : "";
-  if (!title || title.length > TITLE_MAX) {
-    return "Title is required and must be under 140 characters.";
-  }
-
-  const subtitle = typeof doc.subtitle === "string" ? doc.subtitle : "";
-  if (subtitle.length > SUBTITLE_MAX) {
-    return "Subtitle is too long.";
-  }
-
-  if (!Array.isArray(doc.moments)) {
-    return "Moments must be an array.";
-  }
-  if (doc.moments.length > MOMENTS_MAX) {
-    return "Too many moments.";
-  }
-
-  if (!Array.isArray(doc.photos)) {
-    return "Photos must be an array.";
-  }
-  if (doc.photos.length > PHOTOS_MAX) {
-    return "Too many photos.";
-  }
-
-  return null;
-};
 
 export async function POST(request: Request) {
   let payload: PublishRequestBody | null = null;
@@ -84,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   const doc = payload.doc as Record<string, unknown>;
-  const validationError = validateDoc(doc);
+  const validationError = validateDocShape(doc);
   if (validationError) {
     return NextResponse.json(
       { error: "invalid_doc", message: validationError },
@@ -93,15 +53,14 @@ export async function POST(request: Request) {
   }
 
   const templateId = payload.templateId;
-  const normalizedDoc = coerceBuilderDoc(templateId, doc);
-  const gate = canPublish(normalizedDoc, templateId);
-  if (!gate.allowed) {
+  const sessionId =
+    typeof payload.sessionId === "string" ? payload.sessionId : "";
+
+  if (!sessionId) {
     return NextResponse.json(
       {
-        error: "upgrade_required",
-        message: gate.reason ?? "Upgrade required to publish.",
-        photoCount: gate.photoCount,
-        maxPhotos: gate.maxPhotos,
+        error: "payment_required",
+        message: "Payment required to publish.",
       },
       { status: 402 }
     );
@@ -121,39 +80,85 @@ export async function POST(request: Request) {
     );
   }
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const slug = generateSlug();
-    const now = new Date().toISOString();
-    const { error } = await supabase.from("pages").insert({
-      slug,
-      template_id: templateId,
-      doc: normalizedDoc,
-      status: "published",
-      created_at: now,
-      updated_at: now,
-    });
+  const { data: entitlement, error: entitlementError } = await supabase
+    .from("entitlements")
+    .select("plan, status")
+    .eq("session_id", sessionId)
+    .eq("status", "active")
+    .maybeSingle();
 
-    if (!error) {
-      return NextResponse.json({ slug, url: `/v/${slug}` });
-    }
-
-    if (error.code !== "23505") {
-      return NextResponse.json(
-        {
-          error: "publish_failed",
-          message: error.message ?? "Publish failed.",
-          code: error.code,
-        },
-        { status: 500 }
-      );
-    }
+  if (entitlementError || !entitlement) {
+    return NextResponse.json(
+      {
+        error: "payment_required",
+        message: "Payment required to publish.",
+      },
+      { status: 402 }
+    );
   }
 
-  return NextResponse.json(
-    {
-      error: "slug_failed",
-      message: "Unable to generate a unique link. Please try again.",
-    },
-    { status: 500 }
-  );
+  const { data: existingPage, error: existingError } = await supabase
+    .from("pages")
+    .select("slug")
+    .eq("entitlement_session_id", sessionId)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json(
+      {
+        error: "publish_failed",
+        message: existingError.message ?? "Publish failed.",
+        code: existingError.code,
+      },
+      { status: 500 }
+    );
+  }
+
+  if (existingPage) {
+    return NextResponse.json(
+      {
+        error: "entitlement_used",
+        message: "This purchase already generated a share link.",
+      },
+      { status: 409 }
+    );
+  }
+
+  const plan = entitlement.plan as PlanId | null;
+  const normalizedDoc = coerceBuilderDoc(templateId, doc);
+  const gate = canPublish(normalizedDoc, templateId, plan);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      {
+        error: gate.paymentRequired ? "payment_required" : "upgrade_required",
+        message: gate.reason ?? "Upgrade required to publish.",
+        needed: gate.neededPlan,
+        photoCount: gate.photoCount,
+        maxPhotos: gate.maxPhotos,
+      },
+      { status: 402 }
+    );
+  }
+
+  try {
+    const result = await publishWithService({
+      templateId,
+      doc: normalizedDoc,
+      entitlementSessionId: sessionId,
+    });
+    return NextResponse.json({ slug: result.slug, url: `/v/${result.slug}` });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "publish_failed",
+        message:
+          error instanceof Error ? error.message : "Publish failed.",
+        code:
+          error instanceof Error && "code" in error
+            ? (error as Error & { code?: string }).code
+            : undefined,
+      },
+      { status: 500 }
+    );
+  }
 }

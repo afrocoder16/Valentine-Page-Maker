@@ -117,7 +117,8 @@ type MusicPreviewProps = {
 
 function MusicPreview({ track }: MusicPreviewProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const isPlaying = playingUrl === track?.url;
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -125,7 +126,7 @@ function MusicPreview({ track }: MusicPreviewProps) {
       return;
     }
 
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => setPlayingUrl(null);
     audio.addEventListener("ended", handleEnded);
     return () => {
       audio.removeEventListener("ended", handleEnded);
@@ -138,7 +139,6 @@ function MusicPreview({ track }: MusicPreviewProps) {
     }
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
-    setIsPlaying(false);
   }, [track?.url]);
 
   const handleToggle = async () => {
@@ -149,15 +149,15 @@ function MusicPreview({ track }: MusicPreviewProps) {
 
     if (isPlaying) {
       audio.pause();
-      setIsPlaying(false);
+      setPlayingUrl(null);
       return;
     }
 
     try {
       await audio.play();
-      setIsPlaying(true);
+      setPlayingUrl(track.url);
     } catch {
-      setIsPlaying(false);
+      setPlayingUrl(null);
     }
   };
 
@@ -204,6 +204,11 @@ type EditorPanelProps = {
   onSave: () => void;
   onReset: () => void;
   onToast: (message: string) => void;
+  onUpgradeRequest?: (payload: {
+    reason: string;
+    photoCount: number;
+    maxPhotos: number;
+  }) => void;
 };
 
 export default function EditorPanel({
@@ -213,13 +218,13 @@ export default function EditorPanel({
   onSave,
   onReset,
   onToast,
+  onUpgradeRequest,
 }: EditorPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const musicInputRef = useRef<HTMLInputElement | null>(null);
   const momentInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const momentFocusIndex = useRef<number | null>(null);
   const [pendingPhotoIndex, setPendingPhotoIndex] = useState<number | null>(null);
-  const [showPhotoUpsell, setShowPhotoUpsell] = useState(false);
   const isCuteClassic = doc.templateId === "cute-classic";
 
   const photos = [...doc.photos].sort((a, b) => a.order - b.order);
@@ -228,6 +233,7 @@ export default function EditorPanel({
     100,
     Math.round((photoUsage / settings.maxPhotos) * 100)
   );
+  const isAtPhotoLimit = photoUsage >= settings.maxPhotos;
   const loveNotes =
     doc.loveNotes && doc.loveNotes.length > 0 ? doc.loveNotes : [doc.loveNote];
   const loveNoteTitles = loveNotes.map((_, index) => {
@@ -236,12 +242,6 @@ export default function EditorPanel({
       ? title
       : getDefaultLoveNoteTitle(doc.templateId, index);
   });
-
-  useEffect(() => {
-    if (photoUsage < settings.maxPhotos) {
-      setShowPhotoUpsell(false);
-    }
-  }, [photoUsage, settings.maxPhotos]);
 
   const momentSignature = doc.moments.join("|");
 
@@ -429,9 +429,17 @@ export default function EditorPanel({
     fileInputRef.current?.click();
   };
 
+  const requestPhotoUpgrade = () => {
+    onUpgradeRequest?.({
+      reason: `This plan allows up to ${settings.maxPhotos} photos.`,
+      photoCount: photoUsage,
+      maxPhotos: settings.maxPhotos,
+    });
+  };
+
   const applyPhoto = (dataUrl: string, targetIndex: number | null) => {
     if (targetIndex === null && photoUsage >= settings.maxPhotos) {
-      setShowPhotoUpsell(true);
+      requestPhotoUpgrade();
       return;
     }
 
@@ -475,6 +483,14 @@ export default function EditorPanel({
     }
     const dataUrl = await fileToDataUrl(file);
     applyPhoto(dataUrl, null);
+  };
+
+  const handleAddPhotoClick = () => {
+    if (photoUsage >= settings.maxPhotos) {
+      requestPhotoUpgrade();
+      return;
+    }
+    triggerPhotoSelect(null);
   };
 
   const handleRemovePhoto = (index: number) => () => {
@@ -1066,7 +1082,7 @@ export default function EditorPanel({
             <span>
               {photoUsage} of {settings.maxPhotos} used
             </span>
-            <span>More photos cost more</span>
+            <span>Upgrade for more photos</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-white/70">
             <div
@@ -1082,8 +1098,7 @@ export default function EditorPanel({
         >
           <button
             type="button"
-            onClick={() => triggerPhotoSelect(null)}
-            disabled={photoUsage >= settings.maxPhotos}
+            onClick={handleAddPhotoClick}
             className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-rose-600 transition hover:border-rose-300 hover:bg-rose-50/70 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ImagePlus className="h-4 w-4" />
@@ -1093,9 +1108,9 @@ export default function EditorPanel({
             Drag and drop or click to upload. GIFs welcome.
           </p>
         </div>
-        {showPhotoUpsell ? (
+        {isAtPhotoLimit ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-xs text-rose-600 shadow-soft">
-            Want more photos? Add more for ${settings.photoUpsellPrice}/photo.
+            Photo limit reached. Upgrade to add more.
           </div>
         ) : null}
         <div className="grid grid-cols-3 gap-3">

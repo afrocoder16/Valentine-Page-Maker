@@ -1,5 +1,5 @@
 import { getTemplates } from "@/data/templates";
-import TemplateCard from "@/components/TemplateCard";
+import TemplateGallery from "@/components/TemplateGallery";
 
 export default function TemplatesPage() {
   const templates = getTemplates();
@@ -18,9 +18,7 @@ export default function TemplatesPage() {
         </p>
       </section>
       <section className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {templates.map((template) => (
-          <TemplateCard key={template.id} template={template} />
-        ))}
+        <TemplateGallery templates={templates} />
       </section>
     </main>
   );
