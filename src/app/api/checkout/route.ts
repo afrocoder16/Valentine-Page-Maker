@@ -108,9 +108,7 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-
-  
-
+  const stripe = new Stripe(stripeSecret);
   const priceId = plan === "normal" ? priceNormal : pricePro;
 
   try {
