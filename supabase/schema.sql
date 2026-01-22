@@ -42,6 +42,7 @@ create table if not exists public.pending_publishes (
   id uuid primary key default gen_random_uuid(),
   session_id text unique not null,
   template_id text not null,
+  plan text not null,
   doc jsonb not null,
   created_at timestamp with time zone default now()
 );
@@ -49,4 +50,3 @@ create table if not exists public.pending_publishes (
 create index if not exists pending_publishes_session_idx on public.pending_publishes (session_id);
 
 alter table public.pending_publishes enable row level security;
-

@@ -28,19 +28,29 @@ const isValidPlan = (value: unknown): value is PlanId =>
   value === "normal" || value === "pro";
 
 export async function POST(request: Request) {
+  const url = new URL(request.url);
   let payload: CheckoutRequestBody | null = null;
   try {
     payload = (await request.json()) as CheckoutRequestBody;
   } catch {
+    payload = null;
+  }
+
+  const fallbackPlan = url.searchParams.get("plan");
+  const receivedPlan = payload?.plan ?? fallbackPlan;
+  // Minimal logging to verify payloads in server logs.
+  console.log("checkout plan:", receivedPlan ?? "missing");
+
+  if (!isValidPlan(receivedPlan)) {
     return NextResponse.json(
-      { error: "invalid_body", message: "Invalid JSON body." },
+      { error: "Missing or invalid plan" },
       { status: 400 }
     );
   }
 
-  if (!payload || !isValidPlan(payload.plan)) {
+  if (!payload) {
     return NextResponse.json(
-      { error: "invalid_plan", message: "Invalid plan." },
+      { error: "invalid_body", message: "Invalid JSON body." },
       { status: 400 }
     );
   }
@@ -68,7 +78,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const plan = payload.plan;
+  const plan = receivedPlan;
   const templateId = payload.templateId;
   const normalizedDoc = coerceBuilderDoc(templateId, doc);
   const rules = getPlanRules(plan);
@@ -138,6 +148,7 @@ export async function POST(request: Request) {
     const { error } = await supabase.from("pending_publishes").insert({
       session_id: session.id,
       template_id: templateId,
+      plan,
       doc: normalizedDoc,
       created_at: new Date().toISOString(),
     });

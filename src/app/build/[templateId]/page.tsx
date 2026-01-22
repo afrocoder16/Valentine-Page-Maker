@@ -232,6 +232,10 @@ export default function BuildTemplatePage() {
     if (!doc || !templateId) {
       return;
     }
+    if (!plan) {
+      addToast("Missing or invalid plan.");
+      return;
+    }
     setCheckoutPlan(plan);
     try {
       const response = await fetch("/api/checkout", {
