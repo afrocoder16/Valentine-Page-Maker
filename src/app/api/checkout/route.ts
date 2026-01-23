@@ -146,7 +146,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseServiceClient();
     const { error } = await supabase.from("pending_publishes").insert({
-      session_id: session.id,
+      stripe_session_id: session.id,
       template_id: templateId,
       plan,
       doc: normalizedDoc,

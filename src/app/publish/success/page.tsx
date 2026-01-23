@@ -79,7 +79,7 @@ export default async function PublishSuccessPage({
     const { data: pending, error: pendingError } = await supabase
       .from("pending_publishes")
       .select("template_id, doc")
-      .eq("session_id", sessionId)
+      .eq("stripe_session_id", sessionId)
       .maybeSingle();
 
     if (pendingError || !pending) {
@@ -112,7 +112,7 @@ export default async function PublishSuccessPage({
       await supabase
         .from("pending_publishes")
         .delete()
-        .eq("session_id", sessionId);
+        .eq("stripe_session_id", sessionId);
     } catch (error) {
       return renderMessage(
         "Publish failed",
