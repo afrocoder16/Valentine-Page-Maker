@@ -21,6 +21,7 @@ import {
 } from "@/lib/builder/storage";
 import { getTemplateRenderer } from "@/templates/renderers";
 import { SUPPORT_URL } from "@/config/constants";
+import { getClientId } from "@/lib/clientId";
 
 const AUTOSAVE_DELAY_MS = 600;
 const TOAST_DURATION_MS = 10000;
