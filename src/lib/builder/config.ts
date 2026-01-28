@@ -195,7 +195,7 @@ const STARLIT_MOMENTS_TITLE = "Constellation moments";
 const STARLIT_SWOON_LABEL = "Name a star";
 const STARLIT_SWOON_HEADLINE = "Yes, we are meant to be";
 const STARLIT_SWOON_BODY =
-  "Our story has always been written in the night sky—every choice, every orbit, every light leads back to you.";
+  "Our story has always been written in the night sky—every choice, every orbit, every light pulls us closer.";
 const STARLIT_SWOON_TAGS = [
   "destiny",
   "quiet glow",

@@ -128,7 +128,8 @@ const templates: Template[] = [
         "/demos/starlit-constellations/3.svg",
       ],
       music: {
-        title: "Vincent (Starry Starry Night)",
+        title:
+          "Vincent (Starry Starry Night) - string quartet cover by The Manila String Machine",
         src: "/demos/audio/vincent-starry-night.mp3",
       },
     },

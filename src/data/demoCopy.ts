@@ -86,6 +86,11 @@ const demoCopyByTemplateId: Record<string, DemoCopy> = {
       "Late-night whispers that felt like destiny aligning.",
       "Playlists that always start with the same opening note.",
       "Tiny rituals that prove we were meant to cross paths.",
+      "Naming constellations together when the sky was perfectly clear.",
+      "The way adventure feels safe when you are beside me.",
+      "Shared meaning in every detour and magical pause.",
+      "That feeling of being meant to cross paths every single day.",
+      "The silent promise that every starry night belongs to us."
     ],
   },
 };

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { TEMPLATE_IDS, type TemplateId } from "@/data/templates";
 import type { PlanId } from "@/lib/builder/planRules";
 import { getPlanRules, isTemplateAllowed } from "@/lib/builder/planRules";
@@ -8,14 +7,6 @@ import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { validateDocShape } from "@/lib/publish/validation";
 
 export const runtime = "nodejs";
-
-const getStripe = () => {
-  const stripeSecret = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecret) {
-    return null;
-  }
-  return new Stripe(stripeSecret);
-};
 
 type CheckoutRequestBody = {
   plan?: unknown;
@@ -30,13 +21,6 @@ const isValidPlan = (value: unknown): value is PlanId =>
   value === "normal" || value === "pro";
 
 export async function POST(request: Request) {
-  const stripe = getStripe();
-  if (!stripe) {
-    return NextResponse.json(
-      { error: "missing_env", message: "Missing STRIPE_SECRET_KEY." },
-      { status: 500 }
-    );
-  }
   const url = new URL(request.url);
   let payload: CheckoutRequestBody | null = null;
   try {
@@ -118,42 +102,16 @@ export async function POST(request: Request) {
 
   const origin = request.headers.get("origin");
   const siteUrl = origin ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const priceNormal = process.env.STRIPE_PRICE_NORMAL ?? "";
-  const pricePro = process.env.STRIPE_PRICE_PRO ?? "";
-
-  if (!siteUrl || !priceNormal || !pricePro) {
+  if (!siteUrl) {
     return NextResponse.json(
-      {
-        error: "missing_env",
-        message: "Stripe or site URL env vars are missing.",
-      },
+      { error: "missing_env", message: "Missing site URL environment variable." },
       { status: 500 }
     );
   }
-  const priceId = plan === "normal" ? priceNormal : pricePro;
 
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${siteUrl}/publish/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/pricing?canceled=1`,
-      metadata: {
-        plan,
-        templateId,
-      },
-    });
-
-    if (!session.url || !session.id) {
-      return NextResponse.json(
-        { error: "stripe_error", message: "Stripe session failed." },
-        { status: 500 }
-      );
-    }
-
     const supabase = getSupabaseServiceClient();
     const { error } = await supabase.from("pending_publishes").insert({
-      stripe_session_id: session.id,
       template_id: templateId,
       plan,
       doc: normalizedDoc,
@@ -171,13 +129,21 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({
+      message:
+        "The checkout link is now free—thank you for sharing the love. Spread the story, and feel free to buy me a coffee via Cash App @sam16 if it moved you.",
+      shareUrl: `${siteUrl}/publish/success`,
+      free: true,
+      supportLink: "https://cash.app/$sam16",
+    });
   } catch (error) {
     return NextResponse.json(
       {
-        error: "stripe_error",
+        error: "publish_error",
         message:
-          error instanceof Error ? error.message : "Stripe session failed.",
+          error instanceof Error
+            ? error.message
+            : "Failed to register publish request.",
       },
       { status: 500 }
     );

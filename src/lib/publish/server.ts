@@ -21,7 +21,7 @@ export const publishWithService = async ({
 }: {
   templateId: TemplateId;
   doc: BuilderDoc;
-  entitlementSessionId: string;
+  entitlementSessionId?: string;
 }) => {
   const supabase = getSupabaseServiceClient();
 
@@ -35,7 +35,7 @@ export const publishWithService = async ({
       status: "published",
       created_at: now,
       updated_at: now,
-      entitlement_session_id: entitlementSessionId,
+      entitlement_session_id: entitlementSessionId ?? null,
     });
 
     if (!error) {

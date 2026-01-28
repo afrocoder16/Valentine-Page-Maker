@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { buttonClasses } from "@/components/Button";
-import PricingModal from "@/components/PricingModal";
 import BuilderShell from "@/components/builder/BuilderShell";
 import EditorPanel from "@/components/builder/EditorPanel";
 import PreviewFrame from "@/components/builder/PreviewFrame";
@@ -13,20 +12,14 @@ import {
   getBuilderSettings,
   getBuilderTheme,
 } from "@/lib/builder/config";
-import {
-  getPlanRules,
-  isTemplateAllowed,
-  type PlanId,
-} from "@/lib/builder/planRules";
+import { getPlanRules, type PlanId } from "@/lib/builder/planRules";
 import type { BuilderDoc, PreviewMode } from "@/lib/builder/types";
 import {
   loadBuilderDoc,
   resetBuilderDoc,
   saveBuilderDoc,
 } from "@/lib/builder/storage";
-import { readEntitlementSessionId } from "@/lib/entitlements";
 import { getTemplateRenderer } from "@/templates/renderers";
-import { canPublish } from "@/lib/builder/publishRules";
 
 const AUTOSAVE_DELAY_MS = 600;
 const TOAST_DURATION_MS = 10000;
@@ -55,16 +48,8 @@ export default function BuildTemplatePage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishSlug, setPublishSlug] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [entitlementPlan, setEntitlementPlan] = useState<PlanId | null>(null);
-  const [entitlementSessionId, setEntitlementSessionId] = useState("");
-  const [entitlementLoaded, setEntitlementLoaded] = useState(false);
-  const [pricingModalOpen, setPricingModalOpen] = useState(false);
-  const [pricingReason, setPricingReason] = useState<string | null>(null);
-  const [pricingNeededPlan, setPricingNeededPlan] = useState<PlanId | null>(null);
-  const [checkoutPlan, setCheckoutPlan] = useState<PlanId | null>(null);
   const toastTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const templateGateShown = useRef(false);
 
   useEffect(() => {
     if (!templateId) {
@@ -90,39 +75,6 @@ export default function BuildTemplatePage() {
   }, [doc, hydrated, templateId]);
 
   useEffect(() => {
-    const sessionId = readEntitlementSessionId();
-    setEntitlementSessionId(sessionId);
-
-    if (!sessionId) {
-      setEntitlementLoaded(true);
-      return;
-    }
-
-    const fetchEntitlement = async () => {
-      try {
-        const response = await fetch(
-          `/api/entitlements?session_id=${encodeURIComponent(sessionId)}`
-        );
-        const payload = (await response.json().catch(() => ({}))) as {
-          active?: boolean;
-          plan?: PlanId;
-        };
-        if (response.ok && payload.active) {
-          setEntitlementPlan(payload.plan ?? null);
-        } else {
-          setEntitlementPlan(null);
-        }
-      } catch {
-        setEntitlementPlan(null);
-      } finally {
-        setEntitlementLoaded(true);
-      }
-    };
-
-    void fetchEntitlement();
-  }, []);
-
-  useEffect(() => {
     const timers = toastTimers.current;
     return () => {
       if (saveTimer.current) {
@@ -141,32 +93,6 @@ export default function BuildTemplatePage() {
     }, TOAST_DURATION_MS);
     toastTimers.current[id] = timeout;
   };
-
-  const openPricingModal = useCallback(
-    (reason: string, neededPlan?: PlanId | null) => {
-      setPricingReason(reason);
-      setPricingNeededPlan(neededPlan ?? null);
-      setPricingModalOpen(true);
-    },
-    []
-  );
-
-  const closePricingModal = useCallback(() => {
-    setPricingModalOpen(false);
-    setPricingReason(null);
-    setPricingNeededPlan(null);
-  }, []);
-
-  useEffect(() => {
-    if (!templateId || !entitlementLoaded || templateGateShown.current) {
-      return;
-    }
-    const planForTemplate = entitlementPlan ?? "normal";
-    if (!isTemplateAllowed(planForTemplate, templateId as TemplateId)) {
-      openPricingModal("This template requires Pro to publish.", "pro");
-      templateGateShown.current = true;
-    }
-  }, [entitlementLoaded, entitlementPlan, openPricingModal, templateId]);
 
   const shareUrl = useMemo(() => {
     if (!publishSlug || typeof window === "undefined") {
@@ -208,7 +134,7 @@ export default function BuildTemplatePage() {
 
   const theme = getBuilderTheme(templateId as TemplateId);
   const baseSettings = getBuilderSettings(templateId as TemplateId);
-  const planForLimits = entitlementPlan ?? "normal";
+  const planForLimits: PlanId = "normal";
   const planRules = getPlanRules(planForLimits);
   const settings = {
     ...baseSettings,
@@ -228,68 +154,8 @@ export default function BuildTemplatePage() {
     addToast("Reset to defaults");
   };
 
-  const handleCheckout = async (plan: PlanId) => {
-    if (!doc || !templateId) {
-      return;
-    }
-    if (!plan) {
-      addToast("Missing or invalid plan.");
-      return;
-    }
-    setCheckoutPlan(plan);
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, templateId, docSnapshot: doc }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        url?: string;
-        error?: string;
-        message?: string;
-        needed?: PlanId;
-      };
-      if (!response.ok) {
-        if (payload.error === "upgrade_required") {
-          openPricingModal(
-            payload.message ?? "Upgrade required to continue.",
-            payload.needed ?? "pro"
-          );
-          return;
-        }
-        addToast(payload.message ?? "Checkout failed. Try again.");
-        return;
-      }
-      if (!payload.url) {
-        addToast("Checkout failed. Missing redirect.");
-        return;
-      }
-      window.location.href = payload.url;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Checkout failed. Try again.";
-      addToast(message);
-    } finally {
-      setCheckoutPlan(null);
-    }
-  };
-
   const handlePublish = async () => {
     if (!doc || isPublishing) {
-      return;
-    }
-
-    if (!entitlementSessionId || !entitlementPlan) {
-      openPricingModal("Choose a plan to publish your page.");
-      return;
-    }
-
-    const gate = canPublish(doc, templateId as TemplateId, entitlementPlan);
-    if (!gate.allowed) {
-      openPricingModal(
-        gate.reason ?? "Upgrade required to publish.",
-        gate.neededPlan ?? "pro"
-      );
       return;
     }
 
@@ -301,34 +167,13 @@ export default function BuildTemplatePage() {
         body: JSON.stringify({
           templateId,
           doc,
-          sessionId: entitlementSessionId,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as {
         slug?: string;
-        url?: string;
-        error?: string;
         message?: string;
-        needed?: PlanId;
       };
       if (!response.ok) {
-        if (payload.error === "payment_required") {
-          openPricingModal(payload.message ?? "Payment required to publish.");
-          return;
-        }
-        if (payload.error === "upgrade_required") {
-          openPricingModal(
-            payload.message ?? "Upgrade required to publish.",
-            payload.needed ?? "pro"
-          );
-          return;
-        }
-        if (payload.error === "entitlement_used") {
-          openPricingModal(
-            payload.message ?? "This purchase has already been used."
-          );
-          return;
-        }
         addToast(payload.message ?? "Publish failed. Try again.");
         return;
       }
@@ -364,11 +209,7 @@ export default function BuildTemplatePage() {
     photoCount: number;
     maxPhotos: number;
   }) => {
-    if (entitlementPlan === "pro") {
-      addToast("Photo limit reached.");
-      return;
-    }
-    openPricingModal(payload.reason, "pro");
+    addToast(payload.reason);
   };
 
   return (
@@ -419,15 +260,6 @@ export default function BuildTemplatePage() {
           ))}
         </div>
       ) : null}
-
-      <PricingModal
-        open={pricingModalOpen}
-        onClose={closePricingModal}
-        onSelectPlan={handleCheckout}
-        reason={pricingReason}
-        neededPlan={pricingNeededPlan}
-        loadingPlan={checkoutPlan}
-      />
 
       {showPublishModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-6">

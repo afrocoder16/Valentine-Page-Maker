@@ -41,13 +41,6 @@ const coerceMusic = (value: unknown): BuilderMusic | null => {
   if (typeof music.url !== "string" || typeof music.name !== "string") {
     return null;
   }
-  const normalizedMusic = coerceMusic(doc.music) ?? defaults.music;
-  const sanitizedMusic =
-    templateId === "cute-classic" &&
-    normalizedMusic?.url === "/demos/audio/soft-piano.mp3"
-      ? null
-      : normalizedMusic;
-
   return {
     url: music.url,
     name: music.name,
@@ -101,6 +94,12 @@ export const coerceBuilderDoc = (
       : defaults.midnightPalette;
 
   const photos = coercePhotos(doc.photos);
+  const normalizedMusic = coerceMusic(doc.music) ?? defaults.music;
+  const sanitizedMusic =
+    templateId === "cute-classic" &&
+    normalizedMusic?.url === "/demos/audio/soft-piano.mp3"
+      ? null
+      : normalizedMusic;
 
   return {
     templateId,
