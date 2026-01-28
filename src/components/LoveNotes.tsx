@@ -18,7 +18,7 @@ export default function LoveNotes() {
   const [notes, setNotes] = useState(defaultNotes);
 
   return (
-    <section className="mt-20">
+    <section className="mx-auto mt-20 w-full max-w-6xl px-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
