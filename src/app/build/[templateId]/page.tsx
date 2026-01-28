@@ -50,6 +50,7 @@ export default function BuildTemplatePage() {
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishSlug, setPublishSlug] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
   const [clientId, setClientId] = useState<string | null>(null);
   const [publishCount, setPublishCount] = useState(0);
   const [publishLimitModalOpen, setPublishLimitModalOpen] = useState(false);
@@ -182,6 +183,11 @@ export default function BuildTemplatePage() {
     addToast("Reset to defaults");
   };
 
+  const requestPublish = () => {
+    if (isPublishing) return;
+    setSupportModalOpen(true);
+  };
+
   const handlePublish = async () => {
     if (!doc || isPublishing) {
       return;
@@ -269,7 +275,7 @@ export default function BuildTemplatePage() {
         saveStatus={saveStatus}
         previewMode={previewMode}
         onPreviewModeChange={setPreviewMode}
-        onPublish={handlePublish}
+        onPublish={requestPublish}
         publishLabel={isPublishing ? "Publishing..." : "Publish"}
         publishDisabled={isPublishing}
         activeTab={activeTab}
@@ -393,6 +399,49 @@ export default function BuildTemplatePage() {
               <button
                 type="button"
                 onClick={() => setPublishLimitModalOpen(false)}
+                className={buttonClasses("ghost")}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {supportModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-6">
+          <div className="w-full max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-soft">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-400">
+              Love prevails
+            </p>
+            <h2 className="mt-4 font-display text-2xl text-slate-900">
+              This project stays free
+            </h2>
+            <p className="mt-3 text-sm text-slate-600">
+              I’ve poured a lot of effort and time into spreading love. Buy me a coffee and keep it alive.
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <a
+                href={SUPPORT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClasses("outline")}
+              >
+                Buy me coffee ☕
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportModalOpen(false);
+                  handlePublish();
+                }}
+                className={buttonClasses("primary")}
+              >
+                Continue to publish
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupportModalOpen(false)}
                 className={buttonClasses("ghost")}
               >
                 Close
