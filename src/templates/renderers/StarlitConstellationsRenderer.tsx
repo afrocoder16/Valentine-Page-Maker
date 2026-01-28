@@ -1157,6 +1157,21 @@ export default function StarlitConstellationsRenderer({
           padding: 1rem 1.2rem 1.2rem;
         }
 
+        @media (max-width: 640px) {
+          .starlit-card {
+            width: min(220px, 90vw);
+          }
+          .starlit-card-left {
+            transform: translate(-80%, -45%);
+          }
+          .starlit-card-right {
+            transform: translate(45%, -45%);
+          }
+          .starlit-card-top {
+            transform: translate(-50%, -90%);
+          }
+        }
+
         .starlit-orbit {
           display: grid;
           place-items: center;
