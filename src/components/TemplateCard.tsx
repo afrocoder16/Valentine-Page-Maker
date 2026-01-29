@@ -15,9 +15,13 @@ export default function TemplateCard({
     <div className="group flex h-full flex-col overflow-hidden rounded-3xl bg-white/90 shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-[0_28px_80px_-60px_rgba(244,63,94,0.9)]">
       <div className="relative">
         <div
-          className={`h-44 w-full bg-gradient-to-br ${template.theme.gradient}`}
+          className="h-44 w-full rounded-[calc(1.5rem+0px)]"
+          style={{
+            backgroundImage: template.theme.background,
+            backgroundSize: "cover",
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/80 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-transparent" />
       </div>
       <div className={`flex flex-1 flex-col ${compact ? "p-5" : "p-6"}`}>
         <div className="flex items-center justify-between gap-3">
